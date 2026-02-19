@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # Telegram Bot Configuration
     BOT_TOKEN: str = Field(..., env='BOT_TOKEN')
-    TELEGAM_CHANNEL_ID: str = Field(..., env='TELEGAM_CHANNEL_ID')
+    TELEGRAM_CHANNEL_ID: str = Field(..., env='TELEGRAM_CHANNEL_ID')
 
     DB_PATH: str = Field(..., env='DB_PATH')
     MAX_LOADS: int = Field(..., env='MAX_LOADS')
@@ -41,11 +41,11 @@ class Settings(BaseSettings):
         env_file_encoding = 'utf-8'
         case_sensitive = True
     
-    @validator('TELEGAM_CHANNEL_ID')
+    @validator('TELEGRAM_CHANNEL_ID')
     def validate_channel_id(cls, v):
-        """Ensure TELEGAM_CHANNEL_ID starts with @ or is a valid numeric ID."""
+        """Ensure TELEGRAM_CHANNEL_ID starts with @ or is a valid numeric ID."""
         if not (v.startswith('@') or v.lstrip('-').isdigit()):
-            raise ValueError('TELEGAM_CHANNEL_ID must start with @ or be a numeric ID')
+            raise ValueError('TELEGRAM_CHANNEL_ID must start with @ or be a numeric ID')
         return v
 
 def get_settings() -> Settings:

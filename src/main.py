@@ -94,7 +94,7 @@ class BotApplication:
         for attempt in range(max_retries):
             try:
                 await self.bot.send_message(
-                    chat_id=self.settings.TELEGAM_CHANNEL_ID,
+                    chat_id=self.settings.TELEGRAM_CHANNEL_ID,
                     text=message,
                     disable_web_page_preview=True,
                     reply_markup=keyboard
