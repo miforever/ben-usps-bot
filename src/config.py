@@ -11,7 +11,11 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,7 @@ class Settings(BaseSettings):
     ERROR_NOTIFICATION_DELAY: int = Field(default=60, env='ERROR_NOTIFICATION_DELAY')
     
     class Config:
-        env_file = '.env'
+        env_file = 'env/.env.dev'
         env_file_encoding = 'utf-8'
         case_sensitive = True
     

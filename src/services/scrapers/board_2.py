@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class LoadScraper:
     """Scraper for Board 2 API"""
     
-    API_URL = "https://demo.swanautomations.store/webhook/7c584a73-0a69-45f4-8bca-c3066e5bec3a"
+    API_URL = "https://demo.swanautomation.store/webhook/7c584a73-0a69-45f4-8bca-c3066e5bec3a"
     REQUEST_TIMEOUT = 30
     
     def __init__(self, cities_list: List[str]):
