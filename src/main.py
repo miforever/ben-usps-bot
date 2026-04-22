@@ -1,28 +1,29 @@
 import asyncio
 import logging
 import random
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.strategy import FSMStrategy
+from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 
-from src.handlers import router as main_router 
-from src.middlewares.services import ServicesMiddleware
-from src.services.order_manager import OrderManager
-from src.services.city_manager import CityManager
-from src.services.scrapers.board_2 import LoadScraper
-from src.services.error_notifier import ErrorNotifier
 from src.config import get_settings
+from src.handlers import router as main_router
+from src.middlewares.services import ServicesMiddleware
+from src.services.city_manager import CityManager
+from src.services.error_notifier import ErrorNotifier
+from src.services.order_manager import OrderManager
+from src.services.scrapers import get_scraper
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("bot.log"),
-        logging.StreamHandler()
-    ]
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -40,11 +41,11 @@ class BotApplication:
         )
         self.order_manager = OrderManager()
         self.city_manager = CityManager(self.settings.CITIES_FILE)
-        self.scraper = LoadScraper(self.settings.CITIES_FILE)
+        self.scraper = get_scraper(self.settings.ACTIVE_BOARD, self.city_manager.get_all_cities())
         self.error_notifier = ErrorNotifier()
-        self.entry_queue = asyncio.Queue()
+        self.entry_queue: asyncio.Queue = asyncio.Queue()
         self.posting_enabled = True
-        
+
         self._setup_middleware()
         self._setup_router()
 
@@ -70,9 +71,9 @@ class BotApplication:
         await self.bot.set_my_commands(commands)
 
     def _format_message(self, entry):
-        state_code = entry.get('state_code', '')
-        stops = "\n".join(f"  <b>Stop {i+1}</b>: {stop}" for i, stop in enumerate(entry['stops']))
-        
+        state_code = entry.get("state_code", "")
+        stops = "\n".join(f"  <b>Stop {i + 1}</b>: {stop}" for i, stop in enumerate(entry["stops"]))
+
         return (
             f"<b>New Load Bid:</b> <code>{entry['order_id']}</code>\n\n"
             f"<b>Distance:</b> {entry['distance']}\n\n"
@@ -83,16 +84,26 @@ class BotApplication:
             f"<a href='https://t.me/ben_usps'>USPS LOADS</a>"
         )
 
-    async def _send_with_retry(self, entry, max_retries=5):
+    async def _send_with_retry(self, entry) -> bool:
+        max_retries = self.settings.SEND_MAX_RETRIES
         try:
             message = self._format_message(entry)
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📍 Map", url=entry['route'])
-            ]])
+            route = entry.get("route", "")
+            keyboard = (
+                InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="📍 Map", url=route)]]
+                )
+                if route
+                else None
+            )
         except Exception as e:
-            logger.error(f"Error formatting message for {entry.get('order_id')}: {e}", exc_info=True)
-            if self.settings.ERROR_NOTIFICATION_ENABLED:
-                await self.error_notifier.notify(f"Message format error: {e}\n\nEntry: {entry}", self.bot)
+            logger.error(
+                f"Error formatting message for {entry.get('order_id')}: {e}",
+                exc_info=True,
+            )
+            await self.error_notifier.notify(
+                f"Message format error: {e}\n\nEntry: {entry}", self.bot
+            )
             return False
 
         for attempt in range(max_retries):
@@ -101,23 +112,23 @@ class BotApplication:
                     chat_id=self.settings.TELEGRAM_CHANNEL_ID,
                     text=message,
                     disable_web_page_preview=True,
-                    reply_markup=keyboard
+                    reply_markup=keyboard,
                 )
                 return True
             except Exception as e:
                 if attempt < max_retries - 1:
-                    delay = 2 * (2 ** attempt) + random.uniform(0, 1)
+                    delay = 2 * (2**attempt) + random.uniform(0, 1)
                     await asyncio.sleep(delay)
                 else:
                     logger.error(f"Failed to send message after {max_retries} attempts: {e}")
-                    
+
         return False
 
     async def process_entries(self):
         while True:
             try:
                 entry = await self.entry_queue.get()
-                
+
                 if not self.posting_enabled:
                     logger.info(f"Posting disabled, skipping {entry['order_id']}")
                 else:
@@ -126,18 +137,16 @@ class BotApplication:
                         logger.info(f"Posted {entry['order_id']}")
                     else:
                         logger.warning(f"Failed to post {entry['order_id']}")
-                    
-                    await asyncio.sleep(3)
-                    
+                    await asyncio.sleep(self.settings.POST_RATE_LIMIT_SECONDS)
+
                 self.entry_queue.task_done()
-                
+
             except asyncio.CancelledError:
                 logger.info("Process entries task cancelled")
                 raise
             except Exception as e:
                 logger.error(f"Error processing entry: {e}", exc_info=True)
-                if self.settings.ERROR_NOTIFICATION_ENABLED:
-                    await self.error_notifier.notify(f"Entry processing error: {e}", self.bot)
+                await self.error_notifier.notify(f"Entry processing error: {e}", self.bot)
                 self.entry_queue.task_done()
 
     async def scrape_entries(self):
@@ -145,32 +154,30 @@ class BotApplication:
             try:
                 new_entries = self.scraper.get_new_entries()
                 unseen_entries = self.order_manager.process_new_entries(new_entries)
-                
+
                 for entry in unseen_entries:
                     await self.entry_queue.put(entry)
-                    
-                await asyncio.sleep(30)
-                
+
+                await asyncio.sleep(self.settings.SCRAPE_INTERVAL_SECONDS)
+
             except Exception as e:
                 logger.error(f"Scraper error: {e}", exc_info=True)
-                if self.settings.ERROR_NOTIFICATION_ENABLED:
-                    await self.error_notifier.notify(f"Scraper error: {e}", self.bot)
-                await asyncio.sleep(60)
+                await self.error_notifier.notify(f"Scraper error: {e}", self.bot)
+                await asyncio.sleep(self.settings.SCRAPE_ERROR_BACKOFF_SECONDS)
 
     async def start(self):
         await self.register_commands()
-        
+
         process_task = asyncio.create_task(self.process_entries())
         scraper_task = asyncio.create_task(self.scrape_entries())
-        
+
         try:
             await self.dispatcher.start_polling(self.bot)
         except (KeyboardInterrupt, SystemExit):
             logger.info("Shutting down...")
         except Exception as e:
             logger.critical(f"Fatal error: {e}", exc_info=True)
-            if self.settings.ERROR_NOTIFICATION_ENABLED:
-                await self.error_notifier.notify(f"Fatal error: {e}", self.bot)
+            await self.error_notifier.notify(f"Fatal error: {e}", self.bot)
             raise
         finally:
             process_task.cancel()

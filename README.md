@@ -38,8 +38,11 @@ This project is a Telegram bot that automatically scrapes shipping load informat
 │       ├── error_notifier.py
 │       ├── order_manager.py
 │       └── scrapers/
+│           ├── __init__.py
+│           ├── base.py
 │           ├── board_1.py
-│           └── board_2.py
+│           ├── board_2.py
+│           └── board_3.py
 └── venv/
 ```
 
@@ -84,10 +87,29 @@ This project is a Telegram bot that automatically scrapes shipping load informat
     TELEGRAM_CHANNEL_ID="@your_channel_or_id"
     DB_PATH="data/orders.db"
     MAX_LOADS=1000
-    CITIES_FILE="data/cities.txt"
-    ADMIN_IDS="123456789,987654321"
+    CITIES_FILE="data/cities_list.json"
+    ADMIN_IDS=[123456789, 987654321]
     ERROR_NOTIFICATION_ENABLED=True
     ERROR_NOTIFICATION_DELAY=60
+
+    # Which scraper to run: 1, 2, or 3
+    ACTIVE_BOARD=2
+
+    # Only needed when ACTIVE_BOARD=1
+    BOARD1_USERNAME=...
+    BOARD1_PASSWORD=...
+
+    # Only needed when ACTIVE_BOARD=3
+    BOARD3_USERNAME=...
+    BOARD3_PASSWORD=...
+    ```
+
+    Optional tuning settings (all have sensible defaults):
+    ```env
+    SCRAPE_INTERVAL_SECONDS=30
+    SCRAPE_ERROR_BACKOFF_SECONDS=60
+    POST_RATE_LIMIT_SECONDS=3
+    SEND_MAX_RETRIES=5
     ```
 
 ### Running the Bot
